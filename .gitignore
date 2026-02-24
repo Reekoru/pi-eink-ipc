@@ -1,0 +1,8 @@
+Suwayomi-Server-v2.1.2065.jar
+build/
+dist/
+*.egg-info/
+*.pyc
+__pycache__/
+.vscode/
+.venv/
