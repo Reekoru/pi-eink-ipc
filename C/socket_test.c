@@ -24,18 +24,23 @@ int ipc_connect(int fd, const char *socket_path, int max_attempts);
 char input[BUF_SIZE];
 char output[BUF_SIZE];
 Extensions_t extensions;
+Mangas_t mangas;
+GraphQL_ChapterList_t chapters;
 uint8_t status = 0;
+
+static void clear_terminal()
+{
+    printf("\033[H\033[J");
+}
 
 static void print_messages()
 {
     puts("Enter a message to send (or 'exit' to quit): ");
     puts("Available messages:");
-    puts("1. ping");
-    puts("2. get_settings");
-    puts("3. get_extensions");
-    puts("4. install_extension");
-    puts("5. uninstall_extension");
-    puts("6. open_extension_repo");
+    for(uint8_t i = 0; i < IPC_MSG_END; i++)
+    {
+        printf("%d: %s\n", i + 1, IPCMessageStrings[i]);
+    }
 }
 
 static void process_message(int fd)
@@ -43,11 +48,6 @@ static void process_message(int fd)
     if (ipc_recv_message(fd, &status, output, BUF_SIZE) != 0) {
         printf("Timed out waiting for response\n");
     }
-}
-
-static void clear_terminal()
-{
-    printf("\033[H\033[J");
 }
 
 static void print_message()
@@ -61,6 +61,7 @@ static void process_input(int fd)
 {
     char in[BUF_SIZE];
     ExtensionInput_t *ext;
+    clear_terminal();
     while(1)
     {
         // clear_terminal();
@@ -238,11 +239,74 @@ static void process_input(int fd)
                     .name = selected_repo_ext->name
                 };
 
-                create_message(IPC_MSG_OPEN_EXTENSION_REPO, NULL, &input_condition, input, BUF_SIZE);
+                create_message(IPC_MSG_OPEN_EXTENSION_REPO, &pagination, &input_condition, input, BUF_SIZE);
                 ipc_send_message(fd, input);
                 process_message(fd);
-                print_message();
+                
+                json_to_struct(J2S_MANGA, output, &mangas);
+                printf("Manga Count: %d\n", mangas.itemCount);
 
+                Manga_t *manga;
+                FOREACH_MANGA(mangas, manga)
+                {
+                    printf("Manga %d: %s (id: %d)\n", i + 1, manga->title, manga->id);
+                }
+                break;
+            }
+            case IPC_MSG_OPEN_MANGA:
+            {
+                if(mangas.itemCount == 0)
+                {
+                    printf("No mangas available. Please fetch mangas first.\n");
+                    break;
+                }
+                puts("Enter manga ID: ");
+                if (fgets(input, sizeof(input), stdin) == NULL) {
+                    break;
+                }
+                int manga_id = atoi(input);
+                if(manga_id < 1 || manga_id > mangas.itemCount)
+                {
+                    printf("Invalid manga ID: %s\n", input);
+                    break;
+                }
+
+                manga_id = mangas.mangas[manga_id - 1].id;
+                SourceInputCondition_t manga_input_condition = 
+                {
+                    .id = manga_id,
+                    .isNsfw = -1,
+                    .lang = NULL,
+                    .name = NULL
+                };
+
+                GraphQL_Pagination_t pagination = {
+                    .first = 10,
+                    .offset = 0
+                };
+
+                printf("Please enter the page number for manga chapters: ");
+                if (fgets(input, sizeof(input), stdin) == NULL) {
+                    break;
+                }
+                int page = atoi(input);
+                if(page < 1)                {
+                    printf("Invalid page number: %s\n", input);
+                    break;
+                }
+                pagination.first = 10;
+                pagination.offset = (page - 1) * 10;
+                create_message(IPC_MSG_OPEN_MANGA, &pagination, &manga_input_condition, input, BUF_SIZE);
+                ipc_send_message(fd, input);
+                process_message(fd);
+                json_to_struct(J2S_CHAPTER, output, &chapters);
+                printf("Chapter Count: %d\n", chapters.itemCount);
+                
+                Chapter_t *chapter;
+                FOREACH_ITEM(chapter, chapters, Chapter_t)
+                {
+                    printf("Chapter %d: %s (id: %d)\n", i + 1, chapter->name, chapter->id);
+                }
                 break;
             }
             default:
@@ -264,11 +328,10 @@ int main(void) {
         close(fd);
         return 1;
     }
-    while (1) {
-        process_input(fd);
-    }
+    process_input(fd);
 
     free_extensions(&extensions);
+    free_mangas(&mangas);
     close(fd);
     return 0;
 }

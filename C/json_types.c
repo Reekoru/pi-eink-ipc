@@ -106,3 +106,23 @@ cJSON *SourceInputCondition_toJSON(SourceInputCondition_t *input)
 
     return json;
 }
+
+cJSON *MangaInputCondition_toJSON(MangaInputCondition_t *input)
+{
+    cJSON *json = cJSON_CreateObject();
+
+    if(json == NULL) {
+        perror("Failed to create JSON object");
+        return NULL;
+    }
+
+    if(input == NULL) {
+        cJSON_Delete(json);
+        perror("Input is NULL");
+        return NULL;
+    }
+
+    if(input->mangaId > -1) cJSON_AddNumberToObject(json, "mangaId", input->mangaId);
+
+    return json;
+}
