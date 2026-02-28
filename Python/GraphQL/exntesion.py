@@ -43,24 +43,14 @@ UPDATE_EXTENSION = gql(
 """
 )
 
-GET_SETTINGS = gql(
-    """
-    query GetExtensionRepo {
-        settings {
-            extensionRepos
-        }
-    }
-    """
-    )
-
-SET_SETTINGS = gql(
-    """
-    mutation MyMutation($input: SetSettingsInput = {settings: {}}) {
-        setSettings(input: $input) {
-            settings {
-                extensionRepos
+FETCH_EXTENSIONS = gql(
+    EXTENSION_FRAGMENT + """
+    mutation FETCH_EXTENSIONS {
+        fetchExtensions(input: {clientMutationId: "0"}) {
+            extensions {
+                ...EXTENSION_FRAGMENT
             }
         }
     }
-    """
-    )
+"""
+)

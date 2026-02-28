@@ -99,7 +99,7 @@ cJSON *SourceInputCondition_toJSON(SourceInputCondition_t *input)
         return NULL;
     }
 
-    if(input->id > -1) cJSON_AddNumberToObject(json, "id", input->id);
+    if(input->id != NULL) cJSON_AddStringToObject(json, "id", input->id);
     if(input->isNsfw > -1) cJSON_AddNumberToObject(json, "isNsfw", input->isNsfw);
     if(input->lang != NULL)cJSON_AddStringToObject(json, "lang", input->lang);
     if(input->name != NULL)cJSON_AddStringToObject(json, "name", input->name);

@@ -17,6 +17,9 @@
 #define FOREACH_ITEM(item, list, Type) \
     for (int i = 0; i < (list).itemCount && (((item) = &((Type *)(list).items)[i]), 1); i++)
 
+#define GET_ITEM(list, index, Type) \
+    (((index) >= 0 && (index) < (list).itemCount) ? &((Type *)(list).items)[(index)] : NULL)
+
 typedef enum
 {
     IPC_MSG_PING,
@@ -24,11 +27,12 @@ typedef enum
     IPC_MSG_GET_EXTENSIONS,
     IPC_MSG_INSTALL_EXTENSION,
     IPC_MSG_UNINSTALL_EXTENSION,
-    IPC_MSG_OPEN_EXTENSION_REPO,
+    IPC_MSG_GET_SOURCES,
+    IPC_MSG_GET_MANGAS,
     IPC_MSG_OPEN_MANGA,
     IPC_MSG_END
 } IPCMessage_t;
-
+    
 // Lookup table for IPCMessage_t to string
 static const char* IPCMessageStrings[] = {
     [IPC_MSG_PING] = "PING",
@@ -36,7 +40,8 @@ static const char* IPCMessageStrings[] = {
     [IPC_MSG_GET_EXTENSIONS] = "GET_EXTENSIONS",
     [IPC_MSG_INSTALL_EXTENSION] = "INSTALL_EXTENSION",
     [IPC_MSG_UNINSTALL_EXTENSION] = "UNINSTALL_EXTENSION",
-    [IPC_MSG_OPEN_EXTENSION_REPO] = "OPEN_EXTENSION_REPO",
+    [IPC_MSG_GET_SOURCES] = "GET_SOURCES",
+    [IPC_MSG_GET_MANGAS] = "GET_MANGAS",
     [IPC_MSG_OPEN_MANGA] = "OPEN_MANGA",
     [IPC_MSG_END] = "END"
 };

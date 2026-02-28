@@ -50,11 +50,22 @@ typedef struct
 
 typedef struct
 {
-    int id;
+    char *id;
     int8_t isNsfw;
     char *lang;
     char *name;
 } SourceInputCondition_t;
+
+typedef struct
+{
+    char *displayName;
+    char *iconUrl;
+    char *id;
+    bool isNsfw;
+    char *lang;
+    char *name;
+} Source_t;
+
 
 typedef struct
 {
@@ -79,6 +90,7 @@ typedef struct
 
 typedef struct 
 {
+    int totalCount;
     int itemCount;
     Manga_t *mangas;
 } Mangas_t;
@@ -98,6 +110,7 @@ typedef struct
 
 typedef struct
 {
+    int totalCount;
     int itemCount;
     Chapter_t *items;
 } Chapters_t;
@@ -112,7 +125,7 @@ typedef struct GraphQL_List_t
 typedef struct GraphQL_List_t GraphQL_ExtensionList_t;
 typedef struct GraphQL_List_t GraphQL_MangaList_t;
 typedef struct GraphQL_List_t GraphQL_ChapterList_t;
-
+typedef struct GraphQL_List_t GraphQL_SourceList_t;
 
 
 cJSON *ExtensionInput_toJSON(ExtensionInput_t *input);

@@ -23,10 +23,55 @@ int ipc_connect(int fd, const char *socket_path, int max_attempts);
 
 char input[BUF_SIZE];
 char output[BUF_SIZE];
-Extensions_t extensions;
-Mangas_t mangas;
+GraphQL_ExtensionList_t extensions;
+GraphQL_MangaList_t mangas;
 GraphQL_ChapterList_t chapters;
+GraphQL_SourceList_t sources;
 uint8_t status = 0;
+
+static void free_extension_list(GraphQL_ExtensionList_t *list)
+{
+    if (list == NULL || list->items == NULL) {
+        return;
+    }
+
+    ExtensionInput_t *ext = NULL;
+    FOREACH_ITEM(ext, (*list), ExtensionInput_t)
+    {
+        free(ext->apkName);
+        free(ext->iconUrl);
+        free(ext->lang);
+        free(ext->name);
+        free(ext->pkgName);
+        free(ext->repo);
+        free(ext->versionName);
+    }
+
+    free(list->items);
+    list->items = NULL;
+    list->itemCount = 0;
+    list->totalCount = 0;
+}
+
+static void free_manga_list(GraphQL_MangaList_t *list)
+{
+    if (list == NULL || list->items == NULL) {
+        return;
+    }
+
+    Manga_t *manga = NULL;
+    FOREACH_ITEM(manga, (*list), Manga_t)
+    {
+        free(manga->title);
+        free(manga->author);
+        free(manga->thumbnailPath);
+    }
+
+    free(list->items);
+    list->items = NULL;
+    list->itemCount = 0;
+    list->totalCount = 0;
+}
 
 static void clear_terminal()
 {
@@ -133,8 +178,8 @@ static void process_input(int fd)
                 process_message(fd);
 
                 json_to_struct(J2S_EXTENSION, output, &extensions);
-
-                FOREACH_EXTENSION(extensions, ext)
+                printf("Extension Count: %d\n", extensions.itemCount);
+                FOREACH_ITEM(ext, extensions, ExtensionInput_t)
                 {
                     printf("Extension %d: %s (isInstalled: %d)\n", i + 1, ext->pkgName, ext->isInstalled);
                 }
@@ -146,7 +191,7 @@ static void process_input(int fd)
                 
                 puts("Please select an extension:");
                 puts("");
-                FOREACH_EXTENSION(extensions, ext)
+                FOREACH_ITEM(ext, extensions, ExtensionInput_t)
                 {
                     printf("Extension %d: %s (isInstalled: %d)\n", i + 1, ext->pkgName, ext->isInstalled);
                 }
@@ -160,7 +205,7 @@ static void process_input(int fd)
                     printf("Invalid extension choice: %s\n", input);
                     break;
                 }
-                const ExtensionInput_t *selected_ext = &extensions.extensions[ext_choice - 1];
+                const ExtensionInput_t *selected_ext = GET_ITEM(extensions, ext_choice - 1, ExtensionInput_t);
                 UpdateExtensionInput_t update_input = {
                     .id = selected_ext->pkgName,
                     .patch = {
@@ -175,24 +220,16 @@ static void process_input(int fd)
                 print_message();
                 break;
 
-            case IPC_MSG_OPEN_EXTENSION_REPO:
+            case IPC_MSG_GET_MANGAS:
             {
-                puts("Please select an extension:");
+                puts("Please select source:");
                 puts("");
 
-                ExtensionInput_t params = {
-                    .apkName = NULL,
-                    .hasUpdate = -1,
-                    .iconUrl = NULL,
-                    .isInstalled = true,
+                SourceInputCondition_t params = {
+                    .id = -1,
                     .isNsfw = -1,
-                    .isObsolete = -1,
                     .lang = NULL,
-                    .name = NULL,
-                    .pkgName = NULL,
-                    .repo = NULL,
-                    .versionCode = -1,
-                    .versionName = NULL
+                    .name = NULL
                 };
 
                 puts("Enter page number: ");
@@ -210,36 +247,38 @@ static void process_input(int fd)
                     .first = 10,
                     .offset = (page - 1) * 10
                 };
-                create_message(IPC_MSG_GET_EXTENSIONS, &pagination, &params, input, BUF_SIZE);
+                create_message(IPC_MSG_GET_SOURCES, &pagination, &params, input, BUF_SIZE);
                 ipc_send_message(fd, input);
                 process_message(fd);
                 
-                json_to_struct(J2S_EXTENSION, output, &extensions);
-                FOREACH_EXTENSION(extensions, ext)
+                json_to_struct(J2S_SOURCE, output, &sources);
+
+                Source_t *source;
+                FOREACH_ITEM(source, sources, Source_t)
                 {
-                    printf("Extension %d: %s (isInstalled: %d)\n", i + 1, ext->pkgName, ext->isInstalled);
+                    printf("Source %d: %s (id: %s)\n", i + 1, source->displayName, source->id);
                 }
 
                 if(fgets(input, sizeof(input), stdin) == NULL) {
                     break;
                 }
                 int repo_choice = atoi(input);
-                if(repo_choice < 1 || repo_choice > extensions.itemCount)
+                if(repo_choice < 1 || repo_choice > sources.itemCount)
                 {
-                    printf("Invalid extension choice: %s\n", input);
+                    printf("Invalid source choice: %s\n", input);
                     break;
                 }
 
-                const ExtensionInput_t *selected_repo_ext = &extensions.extensions[repo_choice - 1];
+                const Source_t *selected_repo_source = GET_ITEM(sources, repo_choice - 1, Source_t);
                 SourceInputCondition_t input_condition = 
                 {
-                    .id = -1,
+                    .id = selected_repo_source->id,
                     .isNsfw = -1,
                     .lang = NULL,
-                    .name = selected_repo_ext->name
+                    .name = NULL
                 };
 
-                create_message(IPC_MSG_OPEN_EXTENSION_REPO, &pagination, &input_condition, input, BUF_SIZE);
+                create_message(IPC_MSG_GET_MANGAS, &pagination, &input_condition, input, BUF_SIZE);
                 ipc_send_message(fd, input);
                 process_message(fd);
                 
@@ -247,7 +286,7 @@ static void process_input(int fd)
                 printf("Manga Count: %d\n", mangas.itemCount);
 
                 Manga_t *manga;
-                FOREACH_MANGA(mangas, manga)
+                FOREACH_ITEM(manga, mangas, Manga_t)
                 {
                     printf("Manga %d: %s (id: %d)\n", i + 1, manga->title, manga->id);
                 }
@@ -271,7 +310,8 @@ static void process_input(int fd)
                     break;
                 }
 
-                manga_id = mangas.mangas[manga_id - 1].id;
+                const Manga_t *selected_manga = GET_ITEM(mangas, manga_id - 1, Manga_t);
+                manga_id = selected_manga->id;
                 SourceInputCondition_t manga_input_condition = 
                 {
                     .id = manga_id,
@@ -330,8 +370,8 @@ int main(void) {
     }
     process_input(fd);
 
-    free_extensions(&extensions);
-    free_mangas(&mangas);
+    free_extension_list(&extensions);
+    free_manga_list(&mangas);
     close(fd);
     return 0;
 }

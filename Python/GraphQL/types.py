@@ -40,7 +40,18 @@ class FetchSourceMangaInput:
     type: Optional[str] = None
 
 @dataclass
-class FetchSourceMangaResult:
+class MangasConditionInput:
+    sourceId: Optional[str] = None
+    title: Optional[str] = None
+    author: Optional[str] = None
+
+@dataclass
+class ChapterConditionInput:
+    mangaId: int
+    chapterNumber: Optional[float] = None
+
+@dataclass
+class Manga:
     age: str
     artist: str
     author: str
@@ -54,5 +65,7 @@ class FetchSourceMangaResult:
     status: str
     title: str
     inLibrary: bool
-    status: str
     url: str
+@dataclass
+class FetchSourceMangaResult:
+    manga: list[Manga]

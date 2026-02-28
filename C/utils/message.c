@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define STRUCT_BUFF_LEN 16
 static ExtensionInput_t json_to_extension(cJSON *json);
 
 static Manga_t json_to_manga(cJSON *json)
@@ -60,6 +59,31 @@ static Chapter_t json_to_chapter(cJSON *json)
     return chapter;
 }
 
+static Source_t json_to_source(cJSON *json)
+{
+    Source_t source;
+
+    cJSON *displayName = cJSON_GetObjectItem(json, "displayName");
+    source.displayName = (displayName && displayName->valuestring) ? strdup(displayName->valuestring) : NULL;
+
+    cJSON *iconUrl = cJSON_GetObjectItem(json, "iconUrl");
+    source.iconUrl = (iconUrl && iconUrl->valuestring) ? strdup(iconUrl->valuestring) : NULL;
+
+    cJSON *id = cJSON_GetObjectItem(json, "id");
+    source.id = (id && id->valuestring) ? strdup(id->valuestring) : NULL;
+
+    cJSON *isNsfw = cJSON_GetObjectItem(json, "isNsfw");
+    source.isNsfw = isNsfw ? isNsfw->valueint : false;
+
+    cJSON *lang = cJSON_GetObjectItem(json, "lang");
+    source.lang = (lang && lang->valuestring) ? strdup(lang->valuestring) : NULL;
+
+    cJSON *name = cJSON_GetObjectItem(json, "name");
+    source.name = (name && name->valuestring) ? strdup(name->valuestring) : NULL;
+
+    return source;
+}
+
 void create_message(IPCMessage_t  message, GraphQL_Pagination_t *pagination, void *params, char *output, size_t output_size) {
     if (output == NULL) {
         perror("output buffer is NULL");
@@ -71,7 +95,7 @@ void create_message(IPCMessage_t  message, GraphQL_Pagination_t *pagination, voi
 
     if(params != NULL)
     {
-        cJSON *params_json;
+        cJSON *params_json = NULL;
         switch(message)
         {
             case IPC_MSG_GET_EXTENSIONS:
@@ -89,7 +113,7 @@ void create_message(IPCMessage_t  message, GraphQL_Pagination_t *pagination, voi
                 cJSON_AddItemToObject(m, "params", params_json);
                 break;
             }
-            case IPC_MSG_OPEN_EXTENSION_REPO:
+            case IPC_MSG_GET_MANGAS:
             {
                 SourceInputCondition_t *source_params = (SourceInputCondition_t *)params;
                 params_json = SourceInputCondition_toJSON(source_params);
@@ -143,59 +167,52 @@ void json_to_struct(JSONToStruct_t type, char* json_str, void* output_struct)
     {
         case J2S_EXTENSION:
         {
-            Extensions_t extensions = { 0, 0, NULL };
+            GraphQL_ExtensionList_t extensions = { 0, 0, NULL };
             cJSON *json = cJSON_Parse(json_str);
             if (json == NULL) {
                 perror("Failed to parse JSON");
                 return;
             }
+
+            const cJSON *total_count = cJSON_GetObjectItem(json, "totalCount");
+            extensions.totalCount = cJSON_IsNumber(total_count) ? total_count->valueint : 0;
             
-            const cJSON *data = cJSON_GetObjectItem(json, "extensions");
-            if (!cJSON_IsObject(data)) {
-                perror("Failed to get extensions object from JSON");
+            cJSON *extensions_json = cJSON_GetObjectItem(json, "extensions");
+            if (!cJSON_IsArray(extensions_json)) {
+                perror("Failed to get extensions array from JSON");
                 cJSON_Delete(json);
                 return;
             }
-            const cJSON *totalCount = cJSON_GetObjectItem(data, "totalCount");
-            const cJSON *nodes = cJSON_GetObjectItem(data, "nodes");
-            if(cJSON_IsNumber(totalCount) && totalCount->valueint != NULL)
-            {
-                printf("Total Count: %d\n", totalCount->valueint);
-                extensions.totalCount = totalCount->valueint;
-            }
-            else
-            {
-                extensions.totalCount = 0;
-                perror("Failed to get totalCount from JSON");
+
+            int parsed_count = cJSON_GetArraySize(extensions_json);
+            if (parsed_count < 0) {
+                perror("Failed to get extensions array size from JSON");
                 cJSON_Delete(json);
                 return;
             }
-            if(cJSON_IsArray(nodes) && nodes->child != NULL)
+
+            extensions.itemCount = parsed_count;
+
+            if(parsed_count > 0)
             {
-                ExtensionInput_t ext[STRUCT_BUFF_LEN];
+                ExtensionInput_t *ext = malloc(sizeof(ExtensionInput_t) * parsed_count);
+                if (ext == NULL) {
+                    perror("Failed to allocate memory for extensions");
+                    cJSON_Delete(json);
+                    return;
+                }
+
                 cJSON *item = NULL;
                 int index = 0;
-                cJSON_ArrayForEach(item, nodes) {
-                    if (index >= STRUCT_BUFF_LEN) {
-                        fprintf(stderr, "Exceeded struct buffer length\n");
-                        break;
-                    }
+                cJSON_ArrayForEach(item, extensions_json) {
                     ext[index] = json_to_extension(item);
                     index++;
                 }
-                
-                // Store the actual number of items we parsed
-                extensions.itemCount = index;
-                
-                extensions.extensions = malloc(sizeof(ExtensionInput_t) * index);
-                if (extensions.extensions != NULL) {
-                    memcpy(extensions.extensions, ext, sizeof(ExtensionInput_t) * index);
-                } else {
-                    perror("Failed to allocate memory for extensions");
-                }
+
+                extensions.items = ext;
             }
 
-            memcpy(output_struct, &extensions, sizeof(Extensions_t));
+            memcpy(output_struct, &extensions, sizeof(GraphQL_ExtensionList_t));
 
             cJSON_Delete(json);
             break;
@@ -203,50 +220,109 @@ void json_to_struct(JSONToStruct_t type, char* json_str, void* output_struct)
         case J2S_SETTING:
             break;
         case J2S_SOURCE:
-            break;
-        case J2S_MANGA:
-        {
-            Mangas_t mangas = {0};
+            GraphQL_SourceList_t sources = { 0, 0, NULL };
             cJSON *json = cJSON_Parse(json_str);
-
-            cJSON *count = cJSON_GetObjectItem(json, "count");
-            if(cJSON_IsNumber(count) && count->valueint != NULL)
-            {
-                mangas.itemCount = count->valueint;
+            if (json == NULL) {
+                perror("Failed to parse JSON");
+                return;
             }
-            else
-            {
-                mangas.itemCount = 0;
-                mangas.mangas = NULL;
-                perror("Failed to get manga count from JSON");
+
+            const cJSON *total_count = cJSON_GetObjectItem(json, "totalCount");
+            sources.totalCount = cJSON_IsNumber(total_count) ? total_count->valueint : 0;
+            cJSON *sources_json = cJSON_GetObjectItem(json, "sources");
+            if (!cJSON_IsArray(sources_json)) {
+                sources.itemCount = 0;
+                sources.items = NULL;
+                perror("Failed to get sources array from JSON");
                 cJSON_Delete(json);
                 return;
             }
 
-            cJSON *mangas_json = cJSON_GetObjectItem(json, "mangas");
-            if(cJSON_IsArray(mangas_json) && mangas_json->child != NULL)
-            {                
-                Manga_t manga_array[mangas.itemCount];
+            int parsed_count = cJSON_GetArraySize(sources_json);
+            if (parsed_count < 0) {
+                perror("Failed to get sources array size from JSON");
+                cJSON_Delete(json);
+                return;
+            }
+
+            sources.itemCount = parsed_count;
+            sources.items = NULL;
+
+            if(parsed_count > 0)
+            {
+                Source_t *source_items = malloc(sizeof(Source_t) * parsed_count);
+                if (source_items == NULL) {
+                    perror("Failed to allocate memory for sources");
+                    cJSON_Delete(json);
+                    return;
+                }
+
                 cJSON *item = NULL;
                 int index = 0;
-                cJSON_ArrayForEach(item, mangas_json) {
-                    if (index >= STRUCT_BUFF_LEN) {
-                        fprintf(stderr, "Exceeded struct buffer length\n");
-                        break;
-                    }
-                    manga_array[index] = json_to_manga(item);
+                cJSON_ArrayForEach(item, sources_json) {
+                    source_items[index] = json_to_source(item);
                     index++;
                 }
 
-                mangas.mangas = malloc(sizeof(Manga_t) * index);
-                if (mangas.mangas != NULL) {
-                    memcpy(mangas.mangas, manga_array, sizeof(Manga_t) * index);
-                } else {
-                    perror("Failed to allocate memory for mangas");
-                }
+                sources.items = source_items;
             }
 
-            memcpy(output_struct, &mangas, sizeof(Mangas_t));
+            memcpy(output_struct, &sources, sizeof(GraphQL_SourceList_t));
+
+            cJSON_Delete(json);
+            break;
+        case J2S_MANGA:
+        {
+            GraphQL_MangaList_t mangas = {0};
+            cJSON *json = cJSON_Parse(json_str);
+            if (json == NULL) {
+                perror("Failed to parse JSON");
+                return;
+            }
+
+            const cJSON *total_count = cJSON_GetObjectItem(json, "totalCount");
+            mangas.totalCount = cJSON_IsNumber(total_count) ? total_count->valueint : 0;
+
+            cJSON *mangas_json = cJSON_GetObjectItem(json, "mangas");
+            if(!cJSON_IsArray(mangas_json))
+            {
+                mangas.itemCount = 0;
+                mangas.items = NULL;
+                perror("Failed to get mangas array from JSON");
+                cJSON_Delete(json);
+                return;
+            }
+
+            int parsed_count = cJSON_GetArraySize(mangas_json);
+            if (parsed_count < 0) {
+                perror("Failed to get mangas array size from JSON");
+                cJSON_Delete(json);
+                return;
+            }
+
+            mangas.itemCount = parsed_count;
+            mangas.items = NULL;
+
+            if(parsed_count > 0)
+            {
+                Manga_t *manga_items = malloc(sizeof(Manga_t) * parsed_count);
+                if (manga_items == NULL) {
+                    perror("Failed to allocate memory for mangas");
+                    cJSON_Delete(json);
+                    return;
+                }
+
+                cJSON *item = NULL;
+                int index = 0;
+                cJSON_ArrayForEach(item, mangas_json) {
+                    manga_items[index] = json_to_manga(item);
+                    index++;
+                }
+
+                mangas.items = manga_items;
+            }
+
+            memcpy(output_struct, &mangas, sizeof(GraphQL_MangaList_t));
 
             cJSON_Delete(json);
             break;
@@ -255,42 +331,51 @@ void json_to_struct(JSONToStruct_t type, char* json_str, void* output_struct)
         {
             GraphQL_ChapterList_t chapters = {0};
             cJSON *json = cJSON_Parse(json_str);
-
-            cJSON *count = cJSON_GetObjectItem(json, "count");
-            if(cJSON_IsNumber(count) && count->valueint != NULL)
-            {
-                chapters.itemCount = count->valueint;
+            if (json == NULL) {
+                perror("Failed to parse JSON");
+                return;
             }
-            else
+
+            const cJSON *total_count = cJSON_GetObjectItem(json, "totalCount");
+            chapters.totalCount = cJSON_IsNumber(total_count) ? total_count->valueint : 0;
+
+            cJSON *chapters_json = cJSON_GetObjectItem(json, "chapters");
+            if(!cJSON_IsArray(chapters_json))
             {
                 chapters.itemCount = 0;
                 chapters.items = NULL;
-                perror("Failed to get chapter count from JSON");
+                perror("Failed to get chapters array from JSON");
                 cJSON_Delete(json);
                 return;
             }
 
-            cJSON *chapters_json = cJSON_GetObjectItem(json, "chapters");
-            if(cJSON_IsArray(chapters_json) && chapters_json->child != NULL)
-            {                
-                Chapter_t chapter_array[chapters.itemCount];
+            int parsed_count = cJSON_GetArraySize(chapters_json);
+            if (parsed_count < 0) {
+                perror("Failed to get chapters array size from JSON");
+                cJSON_Delete(json);
+                return;
+            }
+
+            chapters.itemCount = parsed_count;
+            chapters.items = NULL;
+
+            if(parsed_count > 0)
+            {
+                Chapter_t *chapter_items = malloc(sizeof(Chapter_t) * parsed_count);
+                if (chapter_items == NULL) {
+                    perror("Failed to allocate memory for chapters");
+                    cJSON_Delete(json);
+                    return;
+                }
+
                 cJSON *item = NULL;
                 int index = 0;
                 cJSON_ArrayForEach(item, chapters_json) {
-                    if (index >= STRUCT_BUFF_LEN) {
-                        fprintf(stderr, "Exceeded struct buffer length\n");
-                        break;
-                    }
-                    chapter_array[index] = json_to_chapter(item);
+                    chapter_items[index] = json_to_chapter(item);
                     index++;
                 }
 
-                chapters.items = malloc(sizeof(Chapter_t) * index);
-                if (chapters.items != NULL) {
-                    memcpy(chapters.items, chapter_array, sizeof(Chapter_t) * index);
-                } else {
-                    perror("Failed to allocate memory for chapters");
-                }
+                chapters.items = chapter_items;
             }
 
             memcpy(output_struct, &chapters, sizeof(GraphQL_ChapterList_t));

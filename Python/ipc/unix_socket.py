@@ -5,6 +5,8 @@ import threading
 from types import TracebackType
 from typing import Any, Callable, Optional, Type, cast
 from socketserver import StreamRequestHandler, ThreadingMixIn, UnixStreamServer
+from utils.message import InputMessage
+from utils.debug import get_logger, setup_logging
 
 from ipc.ipc_types import IPCMessage, IPCStatus
 
@@ -36,7 +38,9 @@ class UnixSocketHandler(StreamRequestHandler):
 
         payload_dict = cast(dict[str, Any], payload)
         command_id = payload_dict.get("id")
-        params = payload_dict.get("params")
+        params: dict[str, Any] = payload_dict.get("params", {})
+        pagination = params.get("pagination", None)
+        params.pop("pagination", None)
 
         if not isinstance(command_id, int):
             return IPCStatus.ID_ERR
@@ -51,7 +55,8 @@ class UnixSocketHandler(StreamRequestHandler):
             return IPCStatus.ID_ERR
 
         try:
-            result = callback(params)
+            args = InputMessage(pagination=pagination, params=params)
+            result = callback(args)
         except Exception:
             return IPCStatus.CB_ERR
 
@@ -72,7 +77,7 @@ class UnixSocketServer:
     def add_response_callback(
         self,
         key: IPCMessage,
-        callback: Callable[[Any], bytes],
+        callback: Callable[[InputMessage], bytes],
     ) -> None:
         callbacks[key] = callback
 
@@ -128,9 +133,11 @@ class UnixSocketServer:
 
 
 if __name__ == "__main__":
+    setup_logging()
+    logger = get_logger(__name__)
     server = UnixSocketServer()
     server.start()
-    print("Unix socket server is running...")
+    logger.info("Unix socket server is running...")
     try:
         while True:
             threading.Event().wait(1)
