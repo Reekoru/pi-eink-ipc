@@ -347,10 +347,9 @@ static void process_input(int fd)
                 }
 
                 const Manga_t *selected_manga = GET_ITEM(mangas, manga_id - 1, Manga_t);
-                manga_id = selected_manga->id;
                 SourceInputCondition_t manga_input_condition = 
                 {
-                    .id = manga_id,
+                    .id = selected_manga->id,
                     .isNsfw = -1,
                     .lang = NULL,
                     .name = NULL

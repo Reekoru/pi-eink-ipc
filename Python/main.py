@@ -114,7 +114,7 @@ if __name__ == "__main__":
             if source_id is None:
                 return create_message(IPCStatus.ERROR.value, "Missing source id in params")
 
-            fetch_input = FetchSourceMangaInput(source=source_id, page=1, query=None, type=FetchSourceMangaType.LATEST.name)
+            fetch_input = FetchSourceMangaInput(source=source_id, page=1, query=None, type=FetchSourceMangaType.SEARCH.name)
             fetched_mangas_data = graphql_manager.fetch_source_mangas(fetch_input)
             debug_print(f"Fetched manga data from source: {json.dumps(fetched_mangas_data, indent=2)}")
 
@@ -159,6 +159,8 @@ if __name__ == "__main__":
             pagination = input.pagination or {}
             params = input.params or {}
             conditions = ChapterConditionInput(**params)
+            fetched_chapters_data = graphql_manager.fetch_chapters(conditions.mangaId)
+            debug_print(f"Fetched chapters data from source: {json.dumps(fetched_chapters_data, indent=2)}")
             chapters_data = graphql_manager.get_chapters(conditions, pagination)
             chapters = chapters_data["chapters"]["nodes"]
             num_chapters = len(chapters)

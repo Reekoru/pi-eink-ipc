@@ -5,7 +5,7 @@ from gql import Client
 from gql.transport.aiohttp import AIOHTTPTransport
 from GraphQL.types import ChapterConditionInput, ExtensionInput, FetchSourceMangaInput, MangasConditionInput, SourceConditionInput
 from GraphQL.manga import FETCH_SOURCE_MANGA, GET_MANGAS
-from GraphQL.chapter import GET_CHAPTERS
+from GraphQL.chapter import FETCH_CHAPTERS, GET_CHAPTERS
 from config import Config
 from GraphQL.exntesion import FETCH_EXTENSIONS, GET_EXTENSIONS, UPDATE_EXTENSION
 from GraphQL.settings import GET_SETTINGS, SET_SETTINGS
@@ -49,6 +49,10 @@ class GraphQLManager:
     
     def get_chapters(self, condition: ChapterConditionInput, pagination: dict[str, Any]):
       result = self.client.execute(GET_CHAPTERS, variable_values={"condition": asdict(condition), "first": pagination["first"], "offset": pagination["offset"]})
+      return result
+
+    def fetch_chapters(self, manga_id: int):
+      result = self.client.execute(FETCH_CHAPTERS, variable_values={"input": {"mangaId": manga_id}})
       return result
 
     def get_settings(self) -> dict[str, Any]:
