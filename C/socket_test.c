@@ -188,9 +188,45 @@ static void process_input(int fd)
             }
             case IPC_MSG_INSTALL_EXTENSION:
             case IPC_MSG_UNINSTALL_EXTENSION:
-                
+                ExtensionInput_t params = {
+                    .apkName = NULL,
+                    .hasUpdate = -1,
+                    .iconUrl = NULL,
+                    .isInstalled = (choice == IPC_MSG_INSTALL_EXTENSION) ? -1 : true,
+                    .isNsfw = (choice == IPC_MSG_INSTALL_EXTENSION) ? false : -1,
+                    .isObsolete = -1,
+                    .lang = NULL,
+                    .name = NULL,
+                    .pkgName = NULL,
+                    .repo = NULL,
+                    .versionCode = -1,
+                    .versionName = NULL
+                };
+
                 puts("Please select an extension:");
                 puts("");
+
+                puts("Enter page number: ");
+                if (fgets(input, sizeof(input), stdin) == NULL) {
+                    break;
+                }
+
+                int page = atoi(input);
+                if(page < 1)
+                {
+                    printf("Invalid page number: %s\n", input);
+                    break;
+                }
+                GraphQL_Pagination_t pagination = {
+                    .first = 10,
+                    .offset = (page - 1) * 10
+                };
+
+                create_message(IPC_MSG_GET_EXTENSIONS, &pagination, &params, input, BUF_SIZE);
+                ipc_send_message(fd, input);
+                process_message(fd);
+                json_to_struct(J2S_EXTENSION, output, &extensions);
+                printf("Extension Count: %d\n", extensions.itemCount);
                 FOREACH_ITEM(ext, extensions, ExtensionInput_t)
                 {
                     printf("Extension %d: %s (isInstalled: %d)\n", i + 1, ext->pkgName, ext->isInstalled);
@@ -399,7 +435,7 @@ int ipc_recv_message(int fd, uint8_t *status, char* output, size_t output_size)
     FD_SET(fd, &read_fds);
 
     struct timeval timeout;
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 20; // 20 second timeout
     timeout.tv_usec = 0;
 
     int ready = select(fd + 1, &read_fds, NULL, NULL, &timeout);
